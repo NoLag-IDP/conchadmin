@@ -1,0 +1,120 @@
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+--== MAIN GUI ==--
+local gui = Instance.new("ScreenGui")
+gui.Name = "BrainrotSpawnerGUI"
+gui.Parent = playerGui
+gui.ResetOnSpawn = false
+
+--== HIDE/SHOW BUTTON ==--
+local toggle = Instance.new("TextButton")
+toggle.Size = UDim2.new(0, 50, 0, 50)
+toggle.Position = UDim2.new(0, 20, 0, 200)
+toggle.Text = "👁"
+toggle.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+toggle.TextColor3 = Color3.new(1, 1, 1)
+toggle.Font = Enum.Font.GothamBold
+toggle.TextScaled = true
+toggle.Parent = gui
+
+local corner = Instance.new("UICorner", toggle)
+corner.CornerRadius = UDim.new(1, 0)
+
+--== MAIN FRAME ==--
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 220)
+frame.Position = UDim2.new(0, 80, 0, 200)
+frame.BackgroundColor3 = Color3.fromRGB(230, 0, 0)
+frame.Parent = gui
+
+Instance.new("UICorner", frame)
+
+-- Make draggable
+local dragging = false
+local dragStart, startPos
+
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = frame.Position
+	end
+end)
+
+frame.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+game:GetService("UserInputService").InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+--== TITLE ==--
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Brainrot Spawner"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.Parent = frame
+
+--== TEXTBOXES ==--
+local function createBox(yPos, placeholder)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0.9, 0, 0, 30)
+	box.Position = UDim2.new(0.05, 0, 0, yPos)
+	box.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+	box.PlaceholderText = placeholder
+	box.TextColor3 = Color3.new(1, 1, 1)
+	box.Font = Enum.Font.Gotham
+	box.TextScaled = true
+	box.Parent = frame
+	Instance.new("UICorner", box)
+	return box
+end
+
+local brainrotBox = createBox(40, "Brainrot Name")
+local mutationBox = createBox(80, "Mutation")
+local traitBox = createBox(120, "Trait")
+
+--== SPAWN BUTTON ==--
+local spawnBtn = Instance.new("TextButton")
+spawnBtn.Size = UDim2.new(0.9, 0, 0, 40)
+spawnBtn.Position = UDim2.new(0.05, 0, 0, 165)
+spawnBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+spawnBtn.Text = "SPAWN"
+spawnBtn.TextColor3 = Color3.new(1, 1, 1)
+spawnBtn.Font = Enum.Font.GothamBold
+spawnBtn.TextScaled = true
+spawnBtn.Parent = frame
+
+Instance.new("UICorner", spawnBtn)
+
+--== SERVER LOGIC ==--
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SpawnRemote = ReplicatedStorage:WaitForChild("SpawnBrainrot") -- CHANGE IF NEEDED
+
+spawnBtn.MouseButton1Click:Connect(function()
+	local brainrot = brainrotBox.Text
+	local mutation = mutationBox.Text
+	local trait = traitBox.Text
+
+	if brainrot ~= "" then
+		SpawnRemote:FireServer(brainrot, mutation, trait)
+	end
+end)
+
+--== HIDING ==--
+local hidden = false
+
+toggle.MouseButton1Click:Connect(function()
+	hidden = not hidden
+	frame.Visible = not hidden
+end)
