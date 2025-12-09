@@ -1,0 +1,792 @@
+-- 🧠 Ultimate Admin Panel GUI — Made by Siva
+
+-- Required modules
+local Animals = require(game:GetService("ReplicatedStorage").Datas.Animals)
+local Mutations = require(game:GetService("ReplicatedStorage").Datas.Mutations)
+local Traits = require(game:GetService("ReplicatedStorage").Datas.Traits)
+local NumberUtils = require(game:GetService("ReplicatedStorage").Utils.NumberUtils)
+
+-- Clean up previous GUI
+if game.CoreGui:FindFirstChild("UltimateAdminPanel") then
+	game.CoreGui.UltimateAdminPanel:Destroy()
+end
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+
+-- Net package for remote communication
+local Net
+local success, err = pcall(function()
+	Net = require(RS:WaitForChild("Packages").Net)
+end)
+
+if not success then
+	warn("Net package not found: " .. tostring(err))
+	return
+end
+
+-- Remote definitions
+local SpawnBrainrot = Net:RemoteFunction("AdminService/SpawnBrainrot")
+local SpawnBrainrotInBase = Net:RemoteFunction("AdminService/SpawnBrainrotInBase")
+local ResetBrainrots = Net:RemoteFunction("AdminService/ResetBrainrots")
+local Morph = Net:RemoteFunction("AdminService/Morph")
+local UnMorph = Net:RemoteFunction("AdminService/UnMorph")
+local AlertErrors = Net:RemoteEvent("AdminService/AlertErrors")
+local StartEvent = Net:RemoteFunction("AdminService/StartEvent")
+local GiveMoney = Net:RemoteFunction("AdminService/GiveMoney")
+local GiveRebirth = Net:RemoteFunction("AdminService/GiveRebirth")
+local ResetData = Net:RemoteEvent("AdminService/ResetData")
+local PlayerMorph = Net:RemoteEvent("AdminService/PlayerMorph")
+local GiveTool = Net:RemoteEvent("AdminService/GiveTool")
+local SaveKey = Net:RemoteEvent("AdminService/SaveKey")
+local Announce = Net:RemoteFunction("AdminService/Announce")
+local ResetKeys = Net:RemoteEvent("AdminService/ResetKeys")
+local GiveGear = Net:RemoteFunction("AdminService/GiveGear")
+local GiveMulti = Net:RemoteFunction("AdminService/GiveMulti")
+local SetSteal = Net:RemoteFunction("AdminService/SetSteal")
+local AddSteal = Net:RemoteFunction("AdminService/AddSteal")
+local UnlockIndex = Net:RemoteFunction("AdminService/UnlockIndex")
+
+-- Helper functions
+local function parseNumber(txt)
+	txt = tostring(txt or ""):gsub("[^%d%-%.]", "")
+	return tonumber(txt)
+end
+
+local function showNotification(message, color)
+	-- You can replace this with your own notification system
+	warn("[Admin Panel] " .. message)
+end
+
+-- Get animal list for dropdown
+local function getAnimalNames()
+	local names = {}
+	for name, _ in pairs(Animals) do
+		table.insert(names, name)
+	end
+	table.sort(names)
+	return names
+end
+
+local function getMutations()
+	local mutations = {""}
+	for name, _ in pairs(Mutations) do
+		table.insert(mutations, name)
+	end
+	table.sort(mutations)
+	return mutations
+end
+
+local function getTraitsList()
+	local traits = {"None", ""}
+	for name, _ in pairs(Traits) do
+		table.insert(traits, name)
+	end
+	table.sort(traits)
+	return traits
+end
+
+local function getEvents()
+	return {"All", "RedCrate", "BlueCrate", "GreenCrate", "PurpleCrate", "Meteor", "Comet", "Tornado", "Rainbow"}
+end
+
+-- GUI Creation
+local gui = Instance.new("ScreenGui")
+gui.Name = "UltimateAdminPanel"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = game.CoreGui
+
+-- Helper functions for UI creation
+local function r(obj, radius)
+	local c = Instance.new("UICorner", obj)
+	c.CornerRadius = UDim.new(0, radius or 8)
+	return c
+end
+
+local function padL(obj, amount)
+	local p = Instance.new("UIPadding", obj)
+	p.PaddingLeft = UDim.new(0, amount or 6)
+	return p
+end
+
+local function mkButton(parent, text, callback, color)
+	local btn = Instance.new("TextButton", parent)
+	btn.Size = UDim2.new(1, 0, 0, 32)
+	btn.BackgroundColor3 = color or Color3.fromRGB(88, 101, 242)
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.AutoButtonColor = false
+	btn.BorderSizePixel = 0
+	r(btn, 6)
+	btn.MouseEnter:Connect(function() 
+		btn.BackgroundTransparency = 0.2 
+	end)
+	btn.MouseLeave:Connect(function() 
+		btn.BackgroundTransparency = 0 
+	end)
+	btn.MouseButton1Click:Connect(callback)
+	return btn
+end
+
+local function mkTextBox(parent, placeholder, defaultText)
+	local box = Instance.new("TextBox", parent)
+	box.Size = UDim2.new(1, 0, 0, 32)
+	box.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+	box.Text = defaultText or ""
+	box.PlaceholderText = placeholder
+	box.PlaceholderColor3 = Color3.fromRGB(100, 110, 130)
+	box.TextColor3 = Color3.fromRGB(220, 225, 240)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 10
+	box.BorderSizePixel = 0
+	box.ClearTextOnFocus = false
+	r(box, 6)
+	padL(box, 8)
+	return box
+end
+
+local function mkDropdown(parent, placeholder, options)
+	local frame = Instance.new("Frame", parent)
+	frame.Size = UDim2.new(1, 0, 0, 32)
+	frame.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+	frame.BorderSizePixel = 0
+	r(frame, 6)
+	
+	local textBox = Instance.new("TextBox", frame)
+	textBox.Size = UDim2.new(1, 0, 1, 0)
+	textBox.BackgroundTransparency = 1
+	textBox.Text = ""
+	textBox.PlaceholderText = placeholder
+	textBox.PlaceholderColor3 = Color3.fromRGB(100, 110, 130)
+	textBox.TextColor3 = Color3.fromRGB(220, 225, 240)
+	textBox.Font = Enum.Font.Gotham
+	textBox.TextSize = 10
+	textBox.ClearTextOnFocus = false
+	padL(textBox, 8)
+	
+	-- Create dropdown list (will be shown on click)
+	local dropdown = Instance.new("ScrollingFrame", frame)
+	dropdown.Size = UDim2.new(1, 0, 0, 120)
+	dropdown.Position = UDim2.new(0, 0, 1, 2)
+	dropdown.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+	dropdown.BorderSizePixel = 0
+	dropdown.ScrollBarThickness = 3
+	dropdown.Visible = false
+	dropdown.ZIndex = 10
+	r(dropdown, 4)
+	
+	local listLayout = Instance.new("UIListLayout", dropdown)
+	listLayout.Padding = UDim.new(0, 2)
+	
+	-- Populate dropdown
+	for _, option in ipairs(options) do
+		local optionBtn = Instance.new("TextButton", dropdown)
+		optionBtn.Size = UDim2.new(1, 0, 0, 28)
+		optionBtn.BackgroundColor3 = Color3.fromRGB(40, 42, 50)
+		optionBtn.Text = option
+		optionBtn.Font = Enum.Font.Gotham
+		optionBtn.TextSize = 10
+		optionBtn.TextColor3 = Color3.new(1, 1, 1)
+		optionBtn.BorderSizePixel = 0
+		r(optionBtn, 4)
+		
+		optionBtn.MouseButton1Click:Connect(function()
+			textBox.Text = option
+			dropdown.Visible = false
+		end)
+	end
+	
+	-- Show/hide dropdown on textbox click
+	textBox.Focused:Connect(function()
+		dropdown.Visible = true
+		dropdown.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+	end)
+	
+	textBox.FocusLost:Connect(function()
+		task.wait(0.1) -- Small delay to allow clicking options
+		dropdown.Visible = false
+	end)
+	
+	return textBox
+end
+
+local function mkSection(parent, title)
+	local section = Instance.new("Frame")
+	section.Size = UDim2.new(1, 0, 0, 0)
+	section.BackgroundTransparency = 1
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.Parent = parent
+
+	local layout = Instance.new("UIListLayout", section)
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	if title then
+		local lbl = Instance.new("TextLabel", section)
+		lbl.Size = UDim2.new(1, 0, 0, 20)
+		lbl.Text = title
+		lbl.Font = Enum.Font.GothamBold
+		lbl.TextSize = 12
+		lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+		lbl.BackgroundTransparency = 1
+		lbl.LayoutOrder = 0
+	end
+	return section
+end
+
+local function mkLabel(parent, text)
+	local lbl = Instance.new("TextLabel", parent)
+	lbl.Size = UDim2.new(1, 0, 0, 16)
+	lbl.Text = text
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextSize = 10
+	lbl.TextColor3 = Color3.fromRGB(180, 180, 200)
+	lbl.BackgroundTransparency = 1
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	return lbl
+end
+
+-- MAIN FRAME
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.fromOffset(480, 550)
+main.Position = UDim2.new(0.5, -240, 0.5, -275)
+main.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+r(main, 12)
+
+-- DRAG FUNCTIONALITY
+local dragging, dragStart, startPos
+local titleBar = Instance.new("Frame", main)
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 27, 35)
+titleBar.BorderSizePixel = 0
+r(titleBar, 12)
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = main.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+-- TITLE
+local title = Instance.new("TextLabel", titleBar)
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.fromOffset(15, 0)
+title.BackgroundTransparency = 1
+title.Text = "ULTIMATE ADMIN PANEL"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 15
+title.TextColor3 = Color3.fromRGB(88, 101, 242)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- CLOSE BUTTON
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.fromOffset(32, 32)
+closeBtn.Position = UDim2.new(1, -36, 0, 4)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 20
+closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+closeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+closeBtn.BorderSizePixel = 0
+r(closeBtn, 6)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- MINIMIZE BUTTON
+local minimizeBtn = Instance.new("TextButton", titleBar)
+minimizeBtn.Size = UDim2.fromOffset(32, 32)
+minimizeBtn.Position = UDim2.new(1, -74, 0, 4)
+minimizeBtn.Text = "–"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 20
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+minimizeBtn.BorderSizePixel = 0
+r(minimizeBtn, 6)
+
+-- SIDE TAB
+local sideTab = Instance.new("Frame", main)
+sideTab.Size = UDim2.new(0, 140, 1, -40)
+sideTab.Position = UDim2.fromOffset(0, 40)
+sideTab.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+sideTab.BorderSizePixel = 0
+local sideLayout = Instance.new("UIListLayout", sideTab)
+sideLayout.Padding = UDim.new(0, 6)
+sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local sidePad = Instance.new("UIPadding", sideTab)
+sidePad.PaddingTop = UDim.new(0, 10)
+sidePad.PaddingLeft = UDim.new(0, 6)
+sidePad.PaddingRight = UDim.new(0, 6)
+
+-- CONTENT CONTAINER
+local contentContainer = Instance.new("Frame", main)
+contentContainer.Size = UDim2.new(1, -140, 1, -40)
+contentContainer.Position = UDim2.fromOffset(140, 40)
+contentContainer.BackgroundTransparency = 1
+contentContainer.BorderSizePixel = 0
+
+-- TAB SYSTEM
+local tabBtns, tabFrames = {}, {}
+
+local function createTab(name, order)
+	local btn = mkButton(sideTab, name, function()
+		for n, f in pairs(tabFrames) do
+			f.Visible = false
+		end
+		for n, b in pairs(tabBtns) do
+			b.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+		end
+		tabFrames[name].Visible = true
+		btn.BackgroundColor3 = Color3.fromRGB(100, 115, 255)
+	end, Color3.fromRGB(88, 101, 242))
+	btn.LayoutOrder = order
+	btn.Size = UDim2.new(1, 0, 0, 36)
+
+	local frame = Instance.new("ScrollingFrame", contentContainer)
+	frame.Size = UDim2.new(1, -12, 1, -8)
+	frame.Position = UDim2.fromOffset(6, 4)
+	frame.BackgroundTransparency = 1
+	frame.BorderSizePixel = 0
+	frame.ScrollBarThickness = 4
+	frame.ScrollBarImageColor3 = Color3.fromRGB(88, 101, 242)
+	frame.Visible = false
+
+	local layout = Instance.new("UIListLayout", frame)
+	layout.Padding = UDim.new(0, 10)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		frame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+	end)
+
+	tabBtns[name] = btn
+	tabFrames[name] = frame
+	return frame
+end
+
+-- CREATE TABS
+local spawnTab = createTab("Spawn Brainrots", 1)
+local morphTab = createTab("Player Morph", 2)
+local eventTab = createTab("Events", 3)
+local currencyTab = createTab("Currency", 4)
+local toolsTab = createTab("Tools", 5)
+local settingsTab = createTab("Settings", 6)
+local advancedTab = createTab("Advanced", 7)
+
+-- TAB 1: SPAWN BRAINROTS
+do
+	local section1 = mkSection(spawnTab, "Spawn in World")
+	local nameBox1 = mkDropdown(section1, "Select Animal", getAnimalNames())
+	local mutBox1 = mkDropdown(section1, "Mutation", getMutations())
+	local traitBox1 = mkTextBox(section1, "Traits (comma separated, or 'None')", "None")
+	local speedBox1 = mkTextBox(section1, "Speed (optional)", "")
+	
+	mkButton(section1, "SPAWN IN WORLD", function()
+		local success, message = SpawnBrainrot:InvokeServer(
+			nameBox1.Text,
+			mutBox1.Text,
+			traitBox1.Text,
+			tonumber(speedBox1.Text)
+		)
+		showNotification(message or (success and "Spawned successfully!" or "Failed to spawn"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(46, 204, 113))
+	
+	local section2 = mkSection(spawnTab, "Spawn in Base")
+	local nameBox2 = mkDropdown(section2, "Select Animal", getAnimalNames())
+	local mutBox2 = mkDropdown(section2, "Mutation", getMutations())
+	local traitBox2 = mkTextBox(section2, "Traits (comma separated, or 'None')", "None")
+	
+	mkButton(section2, "SPAWN IN MY BASE", function()
+		local success, message = SpawnBrainrotInBase:InvokeServer(
+			nameBox2.Text,
+			mutBox2.Text,
+			traitBox2.Text
+		)
+		showNotification(message or (success and "Spawned in base!" or "Failed to spawn"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+	
+	local section3 = mkSection(spawnTab, "Brainrot Management")
+	mkButton(section3, "RESET ALL BRAINROTS", function()
+		local success, message = ResetBrainrots:InvokeServer()
+		showNotification(message or (success and "Reset all brainrots!" or "Failed to reset"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(231, 76, 60))
+end
+
+-- TAB 2: PLAYER MORPH
+do
+	local section1 = mkSection(morphTab, "Morph into Animal")
+	local nameBox = mkDropdown(section1, "Select Animal", getAnimalNames())
+	local mutBox = mkDropdown(section1, "Mutation", getMutations())
+	local traitBox = mkTextBox(section1, "Traits (comma separated, or 'None')", "None")
+	
+	local speedOption = Instance.new("Frame", section1)
+	speedOption.Size = UDim2.new(1, 0, 0, 32)
+	speedOption.BackgroundTransparency = 1
+	speedOption.LayoutOrder = 10
+	
+	local speedLabel = mkLabel(speedOption, "Use Default Speed:")
+	speedLabel.Size = UDim2.new(0.6, 0, 1, 0)
+	
+	local speedToggle = Instance.new("TextButton", speedOption)
+	speedToggle.Size = UDim2.new(0.4, 0, 1, 0)
+	speedToggle.Position = UDim2.new(0.6, 0, 0, 0)
+	speedToggle.Text = "NO"
+	speedToggle.Font = Enum.Font.GothamBold
+	speedToggle.TextSize = 11
+	speedToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+	speedToggle.TextColor3 = Color3.new(1, 1, 1)
+	r(speedToggle, 6)
+	
+	local speedEnabled = false
+	speedToggle.MouseButton1Click:Connect(function()
+		speedEnabled = not speedEnabled
+		speedToggle.Text = speedEnabled and "YES" or "NO"
+		speedToggle.BackgroundColor3 = speedEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	end)
+	
+	local overheadOption = Instance.new("Frame", section1)
+	overheadOption.Size = UDim2.new(1, 0, 0, 32)
+	overheadOption.BackgroundTransparency = 1
+	overheadOption.LayoutOrder = 11
+	
+	local overheadLabel = mkLabel(overheadOption, "Show Animal Overhead:")
+	overheadLabel.Size = UDim2.new(0.6, 0, 1, 0)
+	
+	local overheadToggle = Instance.new("TextButton", overheadOption)
+	overheadToggle.Size = UDim2.new(0.4, 0, 1, 0)
+	overheadToggle.Position = UDim2.new(0.6, 0, 0, 0)
+	overheadToggle.Text = "YES"
+	overheadToggle.Font = Enum.Font.GothamBold
+	overheadToggle.TextSize = 11
+	overheadToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+	overheadToggle.TextColor3 = Color3.new(1, 1, 1)
+	r(overheadToggle, 6)
+	
+	local overheadEnabled = true
+	overheadToggle.MouseButton1Click:Connect(function()
+		overheadEnabled = not overheadEnabled
+		overheadToggle.Text = overheadEnabled and "YES" or "NO"
+		overheadToggle.BackgroundColor3 = overheadEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	end)
+	
+	mkButton(section1, "MORPH INTO ANIMAL", function()
+		local success, message = Morph:InvokeServer(
+			nameBox.Text,
+			mutBox.Text,
+			traitBox.Text,
+			speedEnabled and "yes" or "no",
+			overheadEnabled and "yes" or "no"
+		)
+		showNotification(message or (success and "Morphed successfully!" or "Failed to morph"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(155, 89, 182))
+	
+	local section2 = mkSection(morphTab, "Morph into Player")
+	local playerBox = mkTextBox(section2, "Target Username", "")
+	local chatNameBox = mkTextBox(section2, "Custom Chat Name (optional)", "")
+	
+	local verifiedOption = Instance.new("Frame", section2)
+	verifiedOption.Size = UDim2.new(1, 0, 0, 32)
+	verifiedOption.BackgroundTransparency = 1
+	
+	local verifiedLabel = mkLabel(verifiedOption, "Show Verified Badge:")
+	verifiedLabel.Size = UDim2.new(0.6, 0, 1, 0)
+	
+	local verifiedToggle = Instance.new("TextButton", verifiedOption)
+	verifiedToggle.Size = UDim2.new(0.4, 0, 1, 0)
+	verifiedToggle.Position = UDim2.new(0.6, 0, 0, 0)
+	verifiedToggle.Text = "NO"
+	verifiedToggle.Font = Enum.Font.GothamBold
+	verifiedToggle.TextSize = 11
+	verifiedToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+	verifiedToggle.TextColor3 = Color3.new(1, 1, 1)
+	r(verifiedToggle, 6)
+	
+	local verifiedEnabled = false
+	verifiedToggle.MouseButton1Click:Connect(function()
+		verifiedEnabled = not verifiedEnabled
+		verifiedToggle.Text = verifiedEnabled and "YES" or "NO"
+		verifiedToggle.BackgroundColor3 = verifiedEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	end)
+	
+	mkButton(section2, "MORPH INTO PLAYER", function()
+		PlayerMorph:FireServer(playerBox.Text, chatNameBox.Text, verifiedEnabled and "yes" or "no")
+		showNotification("Morphing into " .. playerBox.Text, Color3.fromRGB(52, 152, 219))
+	end, Color3.fromRGB(241, 196, 15))
+	
+	local section3 = mkSection(morphTab, "Morph Management")
+	mkButton(section3, "UNMORPH", function()
+		local success, message = UnMorph:InvokeServer()
+		showNotification(message or (success and "Unmorphed successfully!" or "Failed to unmorph"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(230, 126, 34))
+end
+
+-- TAB 3: EVENTS
+do
+	local section = mkSection(eventTab, "Execute Events")
+	local eventBox = mkDropdown(section, "Select Event", getEvents())
+	
+	mkButton(section, "EXECUTE EVENT", function()
+		local success, message = StartEvent:InvokeServer(eventBox.Text)
+		showNotification(message or (success and "Event started!" or "Failed to start event"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+	
+	mkButton(section, "EXECUTE ALL EVENTS", function()
+		local success, message = StartEvent:InvokeServer("All")
+		showNotification(message or (success and "All events started!" or "Failed to start events"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(155, 89, 182))
+end
+
+-- TAB 4: CURRENCY
+do
+	local section1 = mkSection(currencyTab, "Money")
+	local moneyBox = mkTextBox(section1, "Money Amount", "1000000")
+	
+	mkButton(section1, "SET MONEY", function()
+		local amount = parseNumber(moneyBox.Text)
+		if not amount then
+			showNotification("Invalid amount!", Color3.fromRGB(255, 50, 50))
+			return
+		end
+		local success, message = GiveMoney:InvokeServer(amount)
+		showNotification(message or (success and "Money set!" or "Failed to set money"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(46, 204, 113))
+	
+	local section2 = mkSection(currencyTab, "Rebirth")
+	local rebirthBox = mkTextBox(section2, "Rebirth Level", "1")
+	
+	mkButton(section2, "SET REBIRTH", function()
+		local level = parseNumber(rebirthBox.Text)
+		if not level then
+			showNotification("Invalid level!", Color3.fromRGB(255, 50, 50))
+			return
+		end
+		local success, message = GiveRebirth:InvokeServer(level)
+		showNotification(message or (success and "Rebirth set!" or "Failed to set rebirth"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+	
+	local section3 = mkSection(currencyTab, "Multiplier")
+	local multiBox = mkTextBox(section3, "Multiplier Amount", "1.0")
+	
+	local addMultiOption = Instance.new("Frame", section3)
+	addMultiOption.Size = UDim2.new(1, 0, 0, 32)
+	addMultiOption.BackgroundTransparency = 1
+	
+	local addMultiLabel = mkLabel(addMultiOption, "Add instead of Set:")
+	addMultiLabel.Size = UDim2.new(0.6, 0, 1, 0)
+	
+	local addMultiToggle = Instance.new("TextButton", addMultiOption)
+	addMultiToggle.Size = UDim2.new(0.4, 0, 1, 0)
+	addMultiToggle.Position = UDim2.new(0.6, 0, 0, 0)
+	addMultiToggle.Text = "NO"
+	addMultiToggle.Font = Enum.Font.GothamBold
+	addMultiToggle.TextSize = 11
+	addMultiToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+	addMultiToggle.TextColor3 = Color3.new(1, 1, 1)
+	r(addMultiToggle, 6)
+	
+	local addMultiEnabled = false
+	addMultiToggle.MouseButton1Click:Connect(function()
+		addMultiEnabled = not addMultiEnabled
+		addMultiToggle.Text = addMultiEnabled and "YES" or "NO"
+		addMultiToggle.BackgroundColor3 = addMultiEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	end)
+	
+	mkButton(section3, "SET/ADD MULTIPLIER", function()
+		local amount = parseNumber(multiBox.Text)
+		if not amount then
+			showNotification("Invalid amount!", Color3.fromRGB(255, 50, 50))
+			return
+		end
+		local success, message = GiveMulti:InvokeServer(amount, addMultiEnabled)
+		showNotification(message or (success and "Multiplier updated!" or "Failed to update multiplier"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(155, 89, 182))
+end
+
+-- TAB 5: TOOLS
+do
+	local section = mkSection(toolsTab, "Give Tools/Gear")
+	local toolBox = mkTextBox(section, "Tool/Gear Name", "AdminSword")
+	
+	mkButton(section, "GIVE TOOL/GEAR", function()
+		GiveTool:FireServer(toolBox.Text)
+		showNotification("Attempting to give: " .. toolBox.Text, Color3.fromRGB(52, 152, 219))
+	end, Color3.fromRGB(46, 204, 113))
+	
+	-- Alternatively, you could also use the GiveGear remote function
+	mkButton(section, "GIVE GEAR (Alternative)", function()
+		local success, message = GiveGear:InvokeServer(toolBox.Text)
+		showNotification(message or (success and "Gear given!" or "Failed to give gear"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+end
+
+-- TAB 6: SETTINGS
+do
+	local section1 = mkSection(settingsTab, "Announcements")
+	local announceBox = mkTextBox(section1, "Announcement Message", "Admin Announcement!")
+	
+	mkButton(section1, "SEND ANNOUNCEMENT", function()
+		local success, message = Announce:InvokeServer(announceBox.Text)
+		showNotification(message or (success and "Announcement sent!" or "Failed to send"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(241, 196, 15))
+	
+	local section2 = mkSection(settingsTab, "Keybinds")
+	
+	mkButton(section2, "RESET ALL KEYBINDS", function()
+		ResetKeys:FireServer()
+		showNotification("Keybinds reset!", Color3.fromRGB(52, 152, 219))
+	end, Color3.fromRGB(230, 126, 34))
+	
+	local section3 = mkSection(settingsTab, "Data Management")
+	
+	mkButton(section3, "RESET PLAYER DATA", function()
+		ResetData:FireServer()
+		showNotification("Data reset requested!", Color3.fromRGB(231, 76, 60))
+	end, Color3.fromRGB(231, 76, 60))
+	
+	local alertOption = Instance.new("Frame", section3)
+	alertOption.Size = UDim2.new(1, 0, 0, 32)
+	alertOption.BackgroundTransparency = 1
+	
+	local alertLabel = mkLabel(alertOption, "Toggle Error Alerts:")
+	alertLabel.Size = UDim2.new(0.6, 0, 1, 0)
+	
+	local alertToggle = Instance.new("TextButton", alertOption)
+	alertToggle.Size = UDim2.new(0.4, 0, 1, 0)
+	alertToggle.Position = UDim2.new(0.6, 0, 0, 0)
+	alertToggle.Text = "OFF"
+	alertToggle.Font = Enum.Font.GothamBold
+	alertToggle.TextSize = 11
+	alertToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+	alertToggle.TextColor3 = Color3.new(1, 1, 1)
+	r(alertToggle, 6)
+	
+	alertToggle.MouseButton1Click:Connect(function()
+		AlertErrors:FireServer()
+		alertToggle.Text = alertToggle.Text == "OFF" and "ON" or "OFF"
+		alertToggle.BackgroundColor3 = alertToggle.Text == "ON" and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	end)
+end
+
+-- TAB 7: ADVANCED
+do
+	local section1 = mkSection(advancedTab, "Steal Management")
+	local stealBox = mkTextBox(section1, "Steal Amount", "0")
+	
+	mkButton(section1, "SET STEAL COUNT", function()
+		local amount = parseNumber(stealBox.Text)
+		if not amount then
+			showNotification("Invalid amount!", Color3.fromRGB(255, 50, 50))
+			return
+		end
+		local success, message = SetSteal:InvokeServer(amount)
+		showNotification(message or (success and "Steal count set!" or "Failed to set"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(46, 204, 113))
+	
+	mkButton(section1, "ADD TO STEAL COUNT", function()
+		local amount = parseNumber(stealBox.Text)
+		if not amount then
+			showNotification("Invalid amount!", Color3.fromRGB(255, 50, 50))
+			return
+		end
+		local success, message = AddSteal:InvokeServer(amount)
+		showNotification(message or (success and "Added to steal count!" or "Failed to add"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+	
+	local section2 = mkSection(advancedTab, "Index Unlock")
+	local indexBox = mkTextBox(section2, "Index Name", "ExampleIndex")
+	
+	mkButton(section2, "UNLOCK INDEX", function()
+		local success, message = UnlockIndex:InvokeServer(indexBox.Text)
+		showNotification(message or (success and "Index unlocked!" or "Failed to unlock"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(155, 89, 182))
+	
+	local section3 = mkSection(advancedTab, "Save Keybinds")
+	local scriptBox = mkTextBox(section3, "Script Name", "AdminPanel")
+	local keyBox = mkTextBox(section3, "Key Name", "ToggleKey")
+	
+	mkButton(section3, "SAVE KEYBIND", function()
+		SaveKey:FireServer(scriptBox.Text, keyBox.Text)
+		showNotification("Keybind saved!", Color3.fromRGB(241, 196, 15))
+	end, Color3.fromRGB(241, 196, 15))
+end
+
+-- Set default tab
+tabFrames["Spawn Brainrots"].Visible = true
+tabBtns["Spawn Brainrots"].BackgroundColor3 = Color3.fromRGB(100, 115, 255)
+
+-- MINIMIZE LOGIC
+local minimized = false
+local fullSize = main.Size
+
+minimizeBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	if minimized then
+		TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { 
+			Size = UDim2.new(0, 480, 0, 40) 
+		}):Play()
+		sideTab.Visible = false
+		contentContainer.Visible = false
+		title.Text = "ADMIN"
+	else
+		TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { 
+			Size = fullSize 
+		}):Play()
+		sideTab.Visible = true
+		contentContainer.Visible = true
+		title.Text = "ULTIMATE ADMIN PANEL"
+	end
+end)
+
+-- Toggle key (optional - you can bind this to a key)
+local function toggleGUI()
+	main.Visible = not main.Visible
+end
+
+-- Example: Bind to F2 key
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.F2 then
+		toggleGUI()
+	end
+end)
+
+-- Success message
+print("Ultimate Admin Panel loaded! Press F2 to toggle. Created by Siva")
