@@ -1,0 +1,528 @@
+-- 🧠 Ultimate Admin Panel GUI — Made by Siva
+
+-- Required modules
+local Animals = require(game:GetService("ReplicatedStorage").Datas.Animals)
+local Mutations = require(game:GetService("ReplicatedStorage").Datas.Mutations)
+local Traits = require(game:GetService("ReplicatedStorage").Datas.Traits)
+
+-- Clean up previous GUI
+if game.CoreGui:FindFirstChild("UltimateAdminPanel") then
+	game.CoreGui.UltimateAdminPanel:Destroy()
+end
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+
+-- Net package for remote communication
+local Net
+local success, err = pcall(function()
+	Net = require(RS:WaitForChild("Packages").Net)
+end)
+
+if not success then
+	warn("Net package not found: " .. tostring(err))
+	return
+end
+
+-- Remote definitions (only these two)
+local SpawnBrainrot = Net:RemoteFunction("AdminService/SpawnBrainrot")
+local StartEvent = Net:RemoteFunction("AdminService/StartEvent")
+
+-- Helper functions
+local function parseNumber(txt)
+	txt = tostring(txt or ""):gsub("[^%d%-%.]", "")
+	return tonumber(txt)
+end
+
+local function showNotification(message, color)
+	-- You can replace this with your own notification system
+	warn("[Admin Panel] " .. message)
+end
+
+-- Get traits list from the exact list you provided
+local function getTraitsList()
+	return {
+		"None",
+		"Strawberry",
+		"Tie",
+		"Paint",
+		"10B",
+		"Witching Hour",
+		"Extinct",
+		"Jack O'Lantern",
+		"Santa Hat",
+		"Meowl",
+		"Disco",
+		"Lightning",
+		"Nyan",
+		"Fireworks",
+		"Fire",
+		"Sombrero",
+		"Indonesian",
+		"Brazil",
+		"Shark Fin",
+		"Explosive",
+		"Galactic",
+		"Matteo Hat",
+		"Spider"
+	}
+end
+
+-- Get events list from the exact list you provided
+local function getEventsList()
+	return {
+		"All",
+		"4th Of July",
+		"Matteo",
+		"Molten",
+		"Solar Flare",
+		"Brazil",
+		"1x1x1x1",
+		"Concert",
+		"Crab Rave",
+		"Dul Dul Dul",
+		"Extinct",
+		"Glitch",
+		"Graveyard",
+		"Indonesia",
+		"Meowl",
+		"Mexico",
+		"Nyan Cats",
+		"Phase 3: Sammy's Base",
+		"Phase 4: Mygame43",
+		"Phase 5: Sammy Snap",
+		"Pinata",
+		"Rain",
+		"Raining Tacos",
+		"Sammyni Spyderini",
+		"Starfall",
+		"Strawberry",
+		"Trick Or Treat",
+		"UFO"
+	}
+end
+
+-- GUI Creation
+local gui = Instance.new("ScreenGui")
+gui.Name = "UltimateAdminPanel"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = game.CoreGui
+
+-- Helper functions for UI creation
+local function r(obj, radius)
+	local c = Instance.new("UICorner", obj)
+	c.CornerRadius = UDim.new(0, radius or 8)
+	return c
+end
+
+local function padL(obj, amount)
+	local p = Instance.new("UIPadding", obj)
+	p.PaddingLeft = UDim.new(0, amount or 6)
+	return p
+end
+
+local function mkButton(parent, text, callback, color)
+	local btn = Instance.new("TextButton", parent)
+	btn.Size = UDim2.new(1, 0, 0, 32)
+	btn.BackgroundColor3 = color or Color3.fromRGB(88, 101, 242)
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.AutoButtonColor = false
+	btn.BorderSizePixel = 0
+	r(btn, 6)
+	btn.MouseEnter:Connect(function() 
+		btn.BackgroundTransparency = 0.2 
+	end)
+	btn.MouseLeave:Connect(function() 
+		btn.BackgroundTransparency = 0 
+	end)
+	btn.MouseButton1Click:Connect(callback)
+	return btn
+end
+
+local function mkTextBox(parent, placeholder, defaultText)
+	local box = Instance.new("TextBox", parent)
+	box.Size = UDim2.new(1, 0, 0, 32)
+	box.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+	box.Text = defaultText or ""
+	box.PlaceholderText = placeholder
+	box.PlaceholderColor3 = Color3.fromRGB(100, 110, 130)
+	box.TextColor3 = Color3.fromRGB(220, 225, 240)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 10
+	box.BorderSizePixel = 0
+	box.ClearTextOnFocus = false
+	r(box, 6)
+	padL(box, 8)
+	return box
+end
+
+local function mkSimpleDropdown(parent, placeholder, options, dropdownHeight)
+	local frame = Instance.new("Frame", parent)
+	frame.Size = UDim2.new(1, 0, 0, 32)
+	frame.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+	frame.BorderSizePixel = 0
+	r(frame, 6)
+	
+	local textBox = Instance.new("TextBox", frame)
+	textBox.Size = UDim2.new(1, 0, 1, 0)
+	textBox.BackgroundTransparency = 1
+	textBox.Text = ""
+	textBox.PlaceholderText = placeholder
+	textBox.PlaceholderColor3 = Color3.fromRGB(100, 110, 130)
+	textBox.TextColor3 = Color3.fromRGB(220, 225, 240)
+	textBox.Font = Enum.Font.Gotham
+	textBox.TextSize = 10
+	textBox.ClearTextOnFocus = false
+	padL(textBox, 8)
+	
+	-- Create dropdown list
+	local dropdown = Instance.new("ScrollingFrame", gui) -- Parent to GUI, not frame
+	dropdown.Size = UDim2.new(0.3, 0, 0, dropdownHeight or 150)
+	dropdown.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+	dropdown.BorderSizePixel = 0
+	dropdown.ScrollBarThickness = 6
+	dropdown.ScrollBarImageColor3 = Color3.fromRGB(88, 101, 242)
+	dropdown.Visible = false
+	dropdown.ZIndex = 100
+	dropdown.BorderSizePixel = 1
+	dropdown.BorderColor3 = Color3.fromRGB(50, 52, 60)
+	r(dropdown, 6)
+	
+	local listLayout = Instance.new("UIListLayout", dropdown)
+	listLayout.Padding = UDim.new(0, 2)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	
+	-- Populate dropdown
+	for _, option in ipairs(options) do
+		local optionBtn = Instance.new("TextButton", dropdown)
+		optionBtn.Size = UDim2.new(1, 0, 0, 30)
+		optionBtn.BackgroundColor3 = Color3.fromRGB(40, 42, 50)
+		optionBtn.Text = option
+		optionBtn.Font = Enum.Font.Gotham
+		optionBtn.TextSize = 11
+		optionBtn.TextColor3 = Color3.new(1, 1, 1)
+		optionBtn.BorderSizePixel = 0
+		r(optionBtn, 4)
+		
+		optionBtn.MouseButton1Click:Connect(function()
+			textBox.Text = option
+			dropdown.Visible = false
+		end)
+		
+		optionBtn.MouseEnter:Connect(function()
+			optionBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 70)
+		end)
+		
+		optionBtn.MouseLeave:Connect(function()
+			optionBtn.BackgroundColor3 = Color3.fromRGB(40, 42, 50)
+		end)
+	end
+	
+	-- Function to update dropdown position
+	local function updateDropdownPosition()
+		local textBoxAbsPos = textBox.AbsolutePosition
+		local textBoxSize = textBox.AbsoluteSize
+		
+		dropdown.Position = UDim2.new(
+			0, textBoxAbsPos.X,
+			0, textBoxAbsPos.Y + textBoxSize.Y + 5
+		)
+	end
+	
+	-- Update canvas size when layout changes
+	listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		dropdown.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+	end)
+	
+	-- Show/hide dropdown on textbox click
+	textBox.Focused:Connect(function()
+		updateDropdownPosition()
+		dropdown.Visible = true
+	end)
+	
+	textBox.FocusLost:Connect(function()
+		-- Small delay to allow clicking options
+		task.wait(0.1)
+		dropdown.Visible = false
+	end)
+	
+	-- Also show dropdown when clicking the textbox (for mouse users)
+	textBox.MouseButton1Click:Connect(function()
+		if not dropdown.Visible then
+			updateDropdownPosition()
+			dropdown.Visible = true
+		end
+	end)
+	
+	return textBox
+end
+
+local function mkSection(parent, title)
+	local section = Instance.new("Frame")
+	section.Size = UDim2.new(1, 0, 0, 0)
+	section.BackgroundTransparency = 1
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.Parent = parent
+
+	local layout = Instance.new("UIListLayout", section)
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	if title then
+		local lbl = Instance.new("TextLabel", section)
+		lbl.Size = UDim2.new(1, 0, 0, 20)
+		lbl.Text = title
+		lbl.Font = Enum.Font.GothamBold
+		lbl.TextSize = 12
+		lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+		lbl.BackgroundTransparency = 1
+		lbl.LayoutOrder = 0
+	end
+	return section
+end
+
+-- MAIN FRAME
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.fromOffset(500, 350)
+main.Position = UDim2.new(0.5, -250, 0.5, -175)
+main.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+r(main, 12)
+
+-- DRAG FUNCTIONALITY
+local dragging, dragStart, startPos
+local titleBar = Instance.new("Frame", main)
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 27, 35)
+titleBar.BorderSizePixel = 0
+r(titleBar, 12)
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = main.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+-- TITLE
+local title = Instance.new("TextLabel", titleBar)
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.fromOffset(15, 0)
+title.BackgroundTransparency = 1
+title.Text = "ADMIN PANEL"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 15
+title.TextColor3 = Color3.fromRGB(88, 101, 242)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- CLOSE BUTTON
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.fromOffset(32, 32)
+closeBtn.Position = UDim2.new(1, -36, 0, 4)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 20
+closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+closeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+closeBtn.BorderSizePixel = 0
+r(closeBtn, 6)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- MINIMIZE BUTTON
+local minimizeBtn = Instance.new("TextButton", titleBar)
+minimizeBtn.Size = UDim2.fromOffset(32, 32)
+minimizeBtn.Position = UDim2.new(1, -74, 0, 4)
+minimizeBtn.Text = "–"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 20
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
+minimizeBtn.BorderSizePixel = 0
+r(minimizeBtn, 6)
+
+-- SIDE TAB
+local sideTab = Instance.new("Frame", main)
+sideTab.Size = UDim2.new(0, 140, 1, -40)
+sideTab.Position = UDim2.fromOffset(0, 40)
+sideTab.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+sideTab.BorderSizePixel = 0
+local sideLayout = Instance.new("UIListLayout", sideTab)
+sideLayout.Padding = UDim.new(0, 6)
+sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local sidePad = Instance.new("UIPadding", sideTab)
+sidePad.PaddingTop = UDim.new(0, 10)
+sidePad.PaddingLeft = UDim.new(0, 6)
+sidePad.PaddingRight = UDim.new(0, 6)
+
+-- CONTENT CONTAINER
+local contentContainer = Instance.new("Frame", main)
+contentContainer.Size = UDim2.new(1, -140, 1, -40)
+contentContainer.Position = UDim2.fromOffset(140, 40)
+contentContainer.BackgroundTransparency = 1
+contentContainer.BorderSizePixel = 0
+
+-- TAB SYSTEM
+local tabBtns, tabFrames = {}, {}
+
+local function createTab(name, order)
+	local btn = mkButton(sideTab, name, function()
+		for n, f in pairs(tabFrames) do
+			f.Visible = false
+		end
+		for n, b in pairs(tabBtns) do
+			b.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+		end
+		tabFrames[name].Visible = true
+		btn.BackgroundColor3 = Color3.fromRGB(100, 115, 255)
+	end, Color3.fromRGB(88, 101, 242))
+	btn.LayoutOrder = order
+	btn.Size = UDim2.new(1, 0, 0, 36)
+
+	local frame = Instance.new("ScrollingFrame", contentContainer)
+	frame.Size = UDim2.new(1, -12, 1, -8)
+	frame.Position = UDim2.fromOffset(6, 4)
+	frame.BackgroundTransparency = 1
+	frame.BorderSizePixel = 0
+	frame.ScrollBarThickness = 4
+	frame.ScrollBarImageColor3 = Color3.fromRGB(88, 101, 242)
+	frame.Visible = false
+
+	local layout = Instance.new("UIListLayout", frame)
+	layout.Padding = UDim.new(0, 10)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		frame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+	end)
+
+	tabBtns[name] = btn
+	tabFrames[name] = frame
+	return frame
+end
+
+-- CREATE TABS (only these two)
+local spawnTab = createTab("Spawn Brainrots", 1)
+local eventTab = createTab("Events", 2)
+
+-- TAB 1: SPAWN BRAINROTS
+do
+	local section = mkSection(spawnTab, "Spawn Brainrot in World")
+	
+	-- Manual text boxes for animal name and mutation
+	local nameBox = mkTextBox(section, "Animal Name", "Strawberry Elephant")
+	local mutBox = mkTextBox(section, "Mutation (leave empty for normal)", "")
+	
+	-- Simple dropdown for traits
+	local traitBox = mkSimpleDropdown(section, "Select Trait (or type manually)", getTraitsList(), 200)
+	
+	mkButton(section, "SPAWN BRAINROT", function()
+		-- Prepare traits
+		local traits = traitBox.Text
+		if traits == "" then
+			traits = "None"
+		end
+		
+		-- Prepare mutation (empty string for normal)
+		local mutation = mutBox.Text
+		if mutation == "" then
+			mutation = ""
+		end
+		
+		-- Send the request
+		local success, message = SpawnBrainrot:InvokeServer(
+			nameBox.Text,
+			mutation,
+			traits,
+			nil  -- Speed is nil (hidden)
+		)
+		
+		showNotification(message or (success and "Brainrot spawned successfully!" or "Failed to spawn brainrot"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(46, 204, 113))
+end
+
+-- TAB 2: EVENTS
+do
+	local section = mkSection(eventTab, "Execute Events")
+	
+	-- Simple dropdown for events
+	local eventBox = mkSimpleDropdown(section, "Select Event (or type manually)", getEventsList(), 250)
+	
+	mkButton(section, "EXECUTE EVENT", function()
+		local success, message = StartEvent:InvokeServer(eventBox.Text)
+		showNotification(message or (success and "Event started successfully!" or "Failed to start event"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(52, 152, 219))
+	
+	mkButton(section, "EXECUTE ALL EVENTS", function()
+		local success, message = StartEvent:InvokeServer("All")
+		showNotification(message or (success and "All events started!" or "Failed to start events"), 
+			success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+	end, Color3.fromRGB(155, 89, 182))
+end
+
+-- Set default tab
+tabFrames["Spawn Brainrots"].Visible = true
+tabBtns["Spawn Brainrots"].BackgroundColor3 = Color3.fromRGB(100, 115, 255)
+
+-- MINIMIZE LOGIC
+local minimized = false
+local fullSize = main.Size
+
+minimizeBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	if minimized then
+		TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { 
+			Size = UDim2.new(0, 500, 0, 40) 
+		}):Play()
+		sideTab.Visible = false
+		contentContainer.Visible = false
+		title.Text = "ADMIN"
+	else
+		TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { 
+			Size = fullSize 
+		}):Play()
+		sideTab.Visible = true
+		contentContainer.Visible = true
+		title.Text = "ADMIN PANEL"
+	end
+end)
+
+-- Toggle key (optional - you can bind this to a key)
+local function toggleGUI()
+	main.Visible = not main.Visible
+end
+
+-- Example: Bind to F2 key
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.F2 then
+		toggleGUI()
+	end
+end)
+
+-- Success message
+print("Admin Panel loaded! Press F2 to toggle. Created by Siva")
