@@ -1,48 +1,165 @@
--- 🧠 Admin Panel GUI (SPV-style) — Made by Siva
+-- 🧠 Admin Panel GUI — Made by Siva
+print("Loading Admin Panel GUI...")
 
+-- Required modules
+local success1, Animals = pcall(function()
+	return require(game:GetService("ReplicatedStorage").Datas.Animals)
+end)
+local success2, Mutations = pcall(function()
+	return require(game:GetService("ReplicatedStorage").Datas.Mutations)
+end)
+local success3, Traits = pcall(function()
+	return require(game:GetService("ReplicatedStorage").Datas.Traits)
+end)
+
+print("Modules loaded:", success1, success2, success3)
+
+-- Clean up previous GUIs
 if game.CoreGui:FindFirstChild("AdminPanelGUI") then
 	game.CoreGui.AdminPanelGUI:Destroy()
 end
+if game.CoreGui:FindFirstChild("AdminPanelToggle") then
+	game.CoreGui.AdminPanelToggle:Destroy()
+end
 
+-- Services
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local RS = game:GetService("ReplicatedStorage")
 
--- Conch remotes
-local CONCH = RS:WaitForChild("conch_networking", 5)
-local INVOKE = CONCH and CONCH:WaitForChild("invoke_server_command", 5)
+print("Services loaded")
 
-local INVOKE_ID = {
-	spawnbrainrot = 1,
-	executeallevents = 1,
-	executeevent = 2,
-	setmoney = 3,
-	setrebirth = 4,
-	spawnluckyblock = 5,
-}
+-- Net package for remote communication
+local Net
+local netSuccess, netErr = pcall(function()
+	Net = require(RS:WaitForChild("Packages").Net)
+end)
 
-local function sendInvokeExact(name, args_tbl)
-	if not INVOKE then return false, "invoke_remote_not_found" end
-	local payload = { invoke_id = INVOKE_ID[name] or 1, name = name, args = args_tbl or {} }
-	local ok, err = pcall(function() INVOKE:FireServer(payload) end)
-	return ok, ok and "invoke" or tostring(err)
+if not netSuccess then
+	warn("Net package not found: " .. tostring(netErr))
+	-- Try alternative path
+	local success2, err2 = pcall(function()
+		Net = require(RS.Packages.Net)
+	end)
+	if not success2 then
+		warn("Failed to load Net package from alternative path: " .. tostring(err2))
+		return
+	end
 end
 
+print("Net package loaded")
+
+-- Remote definitions
+local SpawnBrainrot, StartEvent, Morph, UnMorph, GiveMoney, GiveRebirth, GiveGear
+
+-- Try to get remotes with error handling
+pcall(function()
+	SpawnBrainrot = Net:RemoteFunction("AdminService/SpawnBrainrot")
+	StartEvent = Net:RemoteFunction("AdminService/StartEvent")
+	Morph = Net:RemoteFunction("AdminService/Morph")
+	UnMorph = Net:RemoteFunction("AdminService/UnMorph")
+	GiveMoney = Net:RemoteFunction("AdminService/GiveMoney")
+	GiveRebirth = Net:RemoteFunction("AdminService/GiveRebirth")
+	GiveGear = Net:RemoteFunction("AdminService/GiveGear")
+end)
+
+print("Remotes initialized")
+
+-- Helper functions
 local function parseNumber(txt)
 	txt = tostring(txt or ""):gsub("[^%d%-%.]", "")
 	return tonumber(txt)
 end
 
--- GUI
-local gui = Instance.new("ScreenGui")
+local function showNotification(message, color)
+	-- You can replace this with your own notification system
+	warn("[Admin Panel] " .. message)
+end
+
+-- Create TOGGLE BUTTON (Separate from main GUI) - IMPROVED VERSION
+local toggleContainer = Instance.new("ScreenGui", game.CoreGui)
+toggleContainer.Name = "AdminPanelToggle"
+toggleContainer.ResetOnSpawn = false
+toggleContainer.IgnoreGuiInset = true
+toggleContainer.Enabled = true
+
+-- Create the actual toggle button (using the dragify function from second code)
+local toggleBtn = Instance.new("ImageButton", toggleContainer)
+toggleBtn.Name = "ToggleButton"
+toggleBtn.Size = UDim2.new(0, 64, 0, 64)
+toggleBtn.AnchorPoint = Vector2.new(1, 1)
+toggleBtn.Position = UDim2.new(1, -16, 1, -16)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 36)
+toggleBtn.Image = "rbxassetid://126199836457411" -- Your decal image
+toggleBtn.ScaleType = Enum.ScaleType.Fit
+toggleBtn.Visible = true
+
+-- Make it a perfect circle
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+
+-- Add stroke/border
+local stroke = Instance.new("UIStroke", toggleBtn)
+stroke.Color = Color3.fromRGB(84, 130, 255)
+stroke.Thickness = 1.2
+stroke.Transparency = 0
+
+-- Add drag functionality (from second code)
+local function dragify(handle, target)
+    local dragging = false
+    local dragInput
+    local startPos
+    local startInputPos
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            startPos = target.Position
+            startInputPos = input.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - startInputPos
+            target.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- Apply drag functionality to toggle button
+dragify(toggleBtn, toggleBtn)
+
+-- Create main GUI (initially visible as requested)
+local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "AdminPanelGUI"
 gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.Parent = game.CoreGui
+gui.IgnoreGuiInset = false
+gui.Enabled = true  -- Start with GUI visible
 
--- Helper functions
+print("GUIs created")
+
+-- Helper functions for main GUI
 local function r(obj, radius)
 	local c = Instance.new("UICorner", obj)
 	c.CornerRadius = UDim.new(0, radius or 8)
@@ -115,41 +232,29 @@ end
 
 -- MAIN FRAME
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromOffset(420, 300)
-main.Position = UDim2.new(0.5, -210, 0.5, -150)
+main.Size = UDim2.fromOffset(450, 350)
+main.Position = UDim2.new(0.5, -225, 0.5, -175)
 main.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 main.BorderSizePixel = 0
 main.ClipsDescendants = true
+main.Visible = true  -- Start with main frame visible
 r(main, 10)
 
--- DRAG FUNCTIONALITY
+-- Add border/stroke to main frame (like in second code)
+local mainStroke = Instance.new("UIStroke", main)
+mainStroke.Color = Color3.fromRGB(85, 85, 95)
+mainStroke.Thickness = 1
+
+-- DRAG FUNCTIONALITY for main GUI (improved from second code)
 local dragging, dragStart, startPos
-titleBar = Instance.new("Frame", main)
+local titleBar = Instance.new("Frame", main)
 titleBar.Size = UDim2.new(1, 0, 0, 35)
 titleBar.BackgroundColor3 = Color3.fromRGB(25, 27, 35)
 titleBar.BorderSizePixel = 0
 r(titleBar, 10)
 
-titleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = main.Position
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - dragStart
-		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-	end
-end)
+-- Apply the same dragify function to titleBar
+dragify(titleBar, main)
 
 -- TITLE
 local title = Instance.new("TextLabel", titleBar)
@@ -165,31 +270,18 @@ title.TextXAlignment = Enum.TextXAlignment.Left
 -- CLOSE BUTTON
 local closeBtn = Instance.new("TextButton", titleBar)
 closeBtn.Size = UDim2.fromOffset(28, 28)
-closeBtn.Position = UDim2.new(1, -32, 0, 3)
+closeBtn.Position = UDim2.new(1, -36, 0, 4)
 closeBtn.Text = "×"
 closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 18
+closeBtn.TextSize = 20
 closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
 closeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
 closeBtn.BorderSizePixel = 0
 r(closeBtn, 6)
-closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
-
--- ✅ MINIMIZE BUTTON
-local minimizeBtn = Instance.new("TextButton", titleBar)
-minimizeBtn.Size = UDim2.fromOffset(28, 28)
-minimizeBtn.Position = UDim2.new(1, -68, 0, 3)
-minimizeBtn.Text = "–"
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 18
-minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 37, 45)
-minimizeBtn.BorderSizePixel = 0
-r(minimizeBtn, 6)
 
 -- SIDE TAB
 local sideTab = Instance.new("Frame", main)
-sideTab.Size = UDim2.new(0, 120, 1, -35)
+sideTab.Size = UDim2.new(0, 130, 1, -35)
 sideTab.Position = UDim2.fromOffset(0, 35)
 sideTab.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
 sideTab.BorderSizePixel = 0
@@ -205,25 +297,46 @@ sidePad.PaddingRight = UDim.new(0, 4)
 
 -- CONTENT CONTAINER
 local contentContainer = Instance.new("Frame", main)
-contentContainer.Size = UDim2.new(1, -120, 1, -35)
-contentContainer.Position = UDim2.fromOffset(120, 35)
+contentContainer.Size = UDim2.new(1, -130, 1, -35)
+contentContainer.Position = UDim2.fromOffset(130, 35)
 contentContainer.BackgroundTransparency = 1
 contentContainer.BorderSizePixel = 0
+contentContainer.Visible = true
 
--- TAB SYSTEM
+-- TAB SYSTEM with individual colors
 local tabBtns, tabFrames = {}, {}
 
+-- INDIVIDUAL TAB COLORS - CHANGE THESE TO SET EACH TAB'S COLOR
+local tabColors = {
+    ["Spawn Brainrot"] = Color3.fromRGB(255, 100, 100),  -- Red
+    ["Start Events"] = Color3.fromRGB(52, 152, 219),     -- Blue
+    ["Add Money"] = Color3.fromRGB(46, 204, 113),        -- Green
+    ["Set Rebirth"] = Color3.fromRGB(155, 89, 182),      -- Purple
+    ["Morph"] = Color3.fromRGB(230, 126, 34),            -- Orange
+    ["Give Gear"] = Color3.fromRGB(241, 196, 15)         -- Yellow
+}
+
+-- Inactive tab color (darker version of active)
+local inactiveColor = Color3.fromRGB(60, 60, 70)
+
 local function createTab(name, order)
+    local tabColor = tabColors[name] or Color3.fromRGB(255, 100, 100)
+    
 	local btn = mkButton(sideTab, name, function()
 		for n, f in pairs(tabFrames) do
 			f.Visible = false
 		end
 		for n, b in pairs(tabBtns) do
-			b.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+			local btnColor = tabColors[n] or Color3.fromRGB(255, 100, 100)
+			b.BackgroundColor3 = Color3.fromRGB(
+				math.floor(btnColor.R * 200),  -- Darker for inactive
+				math.floor(btnColor.G * 200),
+				math.floor(btnColor.B * 200)
+			)
 		end
 		tabFrames[name].Visible = true
-		btn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-	end, Color3.fromRGB(255, 100, 100))
+		btn.BackgroundColor3 = tabColor  -- Brighter for active
+	end, tabColor)  -- Default color for this tab
 	btn.LayoutOrder = order
 	btn.Size = UDim2.new(1, 0, 0, 28)
 
@@ -249,82 +362,258 @@ local function createTab(name, order)
 end
 
 -- CREATE TABS
-local spawnerTab = createTab("Brainrot Spawner", 1)
-local eventTab = createTab("Execute Events", 2)
+print("Creating tabs...")
+local spawnerTab = createTab("Spawn Brainrot", 1)
+local eventTab = createTab("Start Events", 2)
 local moneyTab = createTab("Add Money", 3)
 local rebirthTab = createTab("Set Rebirth", 4)
-local luckyTab = createTab("Spawn Lucky Blocks", 5)
+local morphTab = createTab("Morph", 5)
+local gearTab = createTab("Give Gear", 6)
 
--- TAB CONTENTS
+print("Tabs created")
+
+-- TAB 1: SPAWN BRAINROTS (RED TAB)
 do
 	local section = mkSection(spawnerTab, "Spawn Brainrots")
-	local nameBox = mkTextBox(section, "Pet Name", "Strawberry Elephant")
-	local mutBox = mkTextBox(section, "Mutation", "Normal")
+	local nameBox = mkTextBox(section, "Animal Name", "Strawberry Elephant")
+	local mutBox = mkTextBox(section, "Mutation (leave empty for normal)", "")
+	local traitBox = mkTextBox(section, "Traits (comma separated, or 'None')", "None")
+	
 	mkButton(section, "SPAWN", function()
-		sendInvokeExact("spawnbrainrot", { nameBox.Text, mutBox.Text })
-	end)
+		print("Spawn button clicked")
+		local traits = traitBox.Text
+		if traits == "" then
+			traits = "None"
+		end
+		
+		local mutation = mutBox.Text
+		if mutation == "" then
+			mutation = ""
+		end
+		
+		if SpawnBrainrot then
+			local success, message = SpawnBrainrot:InvokeServer(
+				nameBox.Text,
+				mutation,
+				traits,
+				nil
+			)
+			
+			showNotification(message or (success and "Brainrot spawned successfully!" or "Failed to spawn brainrot"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("SpawnBrainrot remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Spawn Brainrot"])  -- Use the tab color for the button
 end
 
+-- TAB 2: EVENTS (BLUE TAB)
 do
 	local section = mkSection(eventTab, "Execute Events")
-	local eventBox = mkTextBox(section, "Type Event Name")
+	local eventBox = mkTextBox(section, "Event Name", "")
+	
 	mkButton(section, "EXECUTE ALL EVENTS", function()
-		sendInvokeExact("executeallevents", {})
-	end)
-	mkButton(section, "EXECUTE TYPED EVENT", function()
+		print("Execute all events button clicked")
+		if StartEvent then
+			local success, message = StartEvent:InvokeServer("All")
+			showNotification(message or (success and "All events started!" or "Failed to start events"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("StartEvent remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Start Events"])
+	
+	mkButton(section, "EXECUTE EVENT", function()
+		print("Execute event button clicked")
 		local typedEvent = eventBox.Text
-		if typedEvent == "" then return warn("⚠️ Type an event first") end
-		sendInvokeExact("executeevent", { typedEvent })
-	end)
+		if typedEvent == "" then 
+			showNotification("⚠️ Type an event first", Color3.fromRGB(255, 50, 50))
+			return 
+		end
+		
+		if StartEvent then
+			local success, message = StartEvent:InvokeServer(typedEvent)
+			showNotification(message or (success and "Event started!" or "Failed to start event"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("StartEvent remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Start Events"])
 end
 
+-- TAB 3: MONEY (GREEN TAB)
 do
 	local section = mkSection(moneyTab, "Add Money")
-	local moneyBox = mkTextBox(section, "Money Amount")
+	local moneyBox = mkTextBox(section, "Money Amount", "1000000")
+	
 	mkButton(section, "ADD MONEY", function()
+		print("Add money button clicked")
 		local val = parseNumber(moneyBox.Text)
-		if not val then return warn("⚠️ Invalid Amount") end
-		sendInvokeExact("setmoney", { val })
-	end)
+		if not val then 
+			showNotification("⚠️ Invalid Amount", Color3.fromRGB(255, 50, 50))
+			return 
+		end
+		
+		if GiveMoney then
+			local success, message = GiveMoney:InvokeServer(val)
+			showNotification(message or (success and "Money set!" or "Failed to set money"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("GiveMoney remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Add Money"])
 end
 
+-- TAB 4: REBIRTH (PURPLE TAB)
 do
 	local section = mkSection(rebirthTab, "Set Rebirth")
-	local rebirthBox = mkTextBox(section, "Rebirth Amount")
+	local rebirthBox = mkTextBox(section, "Rebirth Amount", "1")
+	
 	mkButton(section, "SET REBIRTH", function()
+		print("Set rebirth button clicked")
 		local val = parseNumber(rebirthBox.Text)
-		if not val then return warn("⚠️ Invalid Amount") end
-		sendInvokeExact("setrebirth", { val })
-	end)
+		if not val then 
+			showNotification("⚠️ Invalid Amount", Color3.fromRGB(255, 50, 50))
+			return 
+		end
+		
+		if GiveRebirth then
+			local success, message = GiveRebirth:InvokeServer(val)
+			showNotification(message or (success and "Rebirth set!" or "Failed to set rebirth"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("GiveRebirth remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Set Rebirth"])
 end
 
+-- TAB 5: MORPH (ORANGE TAB)
 do
-	local section = mkSection(luckyTab, "Spawn Lucky Blocks")
-	local nameBox = mkTextBox(section, "Block Name", "Secret Lucky Block")
-	local mutBox = mkTextBox(section, "Mutation", "Normal")
-	mkButton(section, "SPAWN", function()
-		sendInvokeExact("spawnluckyblock", { nameBox.Text, mutBox.Text })
-	end)
+	local section = mkSection(morphTab, "Morph into Animal")
+	local nameBox = mkTextBox(section, "Animal Name", "Strawberry Elephant")
+	local mutBox = mkTextBox(section, "Mutation (leave empty for normal)", "")
+	local traitBox = mkTextBox(section, "Traits (comma separated, or 'None')", "None")
+	local speedBox = mkTextBox(section, "Use Default Speed? (yes/no)", "no")
+	local overheadBox = mkTextBox(section, "Show Animal Overhead? (yes/no)", "yes")
+	
+	mkButton(section, "MORPH", function()
+		print("Morph button clicked")
+		if Morph then
+			local success, message = Morph:InvokeServer(
+				nameBox.Text,
+				mutBox.Text,
+				traitBox.Text,
+				speedBox.Text,
+				overheadBox.Text
+			)
+			
+			showNotification(message or (success and "Morphed successfully!" or "Failed to morph"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("Morph remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Morph"])
+	
+	mkButton(section, "UNMORPH", function()
+		print("Unmorph button clicked")
+		if UnMorph then
+			local success, message = UnMorph:InvokeServer()
+			showNotification(message or (success and "Unmorphed successfully!" or "Failed to unmorph"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("UnMorph remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, Color3.fromRGB(231, 76, 60))
 end
 
-tabFrames["Brainrot Spawner"].Visible = true
-tabBtns["Brainrot Spawner"].BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+-- TAB 6: GEAR (YELLOW TAB)
+do
+	local section = mkSection(gearTab, "Give Gear")
+	local gearBox = mkTextBox(section, "Gear Name", "")
+	
+	mkButton(section, "GIVE GEAR", function()
+		print("Give gear button clicked")
+		local gearName = gearBox.Text
+		if gearName == "" then 
+			showNotification("⚠️ Enter a gear name first", Color3.fromRGB(255, 50, 50))
+			return 
+		end
+		
+		if GiveGear then
+			local success, message = GiveGear:InvokeServer(gearName)
+			showNotification(message or (success and "Gear given successfully!" or "Failed to give gear"), 
+				success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50))
+		else
+			showNotification("GiveGear remote not found!", Color3.fromRGB(255, 50, 50))
+		end
+	end, tabColors["Give Gear"])
+end
 
--- ✅ MINIMIZE LOGIC
-local minimized = false
-local fullSize = main.Size
+-- Set default tab
+tabFrames["Spawn Brainrot"].Visible = true
+tabBtns["Spawn Brainrot"].BackgroundColor3 = tabColors["Spawn Brainrot"]
 
-minimizeBtn.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	if minimized then
-		TweenService:Create(main, TweenInfo.new(0.4), { Size = UDim2.new(0, 420, 0, 45) }):Play()
-		sideTab.Visible = false
-		contentContainer.Visible = false
-		title.Text = "ADMIN PANEL"
+-- Make other tabs inactive (darker)
+for name, btn in pairs(tabBtns) do
+    if name ~= "Spawn Brainrot" then
+        local btnColor = tabColors[name] or Color3.fromRGB(255, 100, 100)
+        btn.BackgroundColor3 = Color3.fromRGB(
+            math.floor(btnColor.R * 200),
+            math.floor(btnColor.G * 200),
+            math.floor(btnColor.B * 200)
+        )
+    end
+end
+
+print("Default tab set to Spawn Brainrot")
+
+-- TOGGLE BUTTON FUNCTIONALITY
+local guiVisible = true  -- Start with GUI visible
+
+-- Toggle button click functionality
+toggleBtn.MouseButton1Click:Connect(function()
+	guiVisible = not guiVisible
+	
+	if guiVisible then
+		-- Show the GUI
+		gui.Enabled = true
+		main.Visible = true
+		print("GUI shown")
 	else
-		TweenService:Create(main, TweenInfo.new(0.4), { Size = fullSize }):Play()
-		sideTab.Visible = true
-		contentContainer.Visible = true
-		title.Text = "ADMIN PANEL"
+		-- Hide the GUI
+		gui.Enabled = false
+		main.Visible = false
+		print("GUI hidden")
 	end
 end)
+
+-- Close button functionality
+closeBtn.MouseButton1Click:Connect(function() 
+	guiVisible = false
+	gui.Enabled = false
+	main.Visible = false
+	print("GUI closed via close button")
+end)
+
+-- Add hover effect to toggle button
+toggleBtn.MouseEnter:Connect(function()
+	TweenService:Create(toggleBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 68, 0, 68)}):Play()
+end)
+
+toggleBtn.MouseLeave:Connect(function()
+	TweenService:Create(toggleBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 64, 0, 64)}):Play()
+end)
+
+-- Also bind F2 key to toggle
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.F2 then
+		guiVisible = not guiVisible
+		gui.Enabled = guiVisible
+		main.Visible = guiVisible
+		print("GUI toggled via F2: " .. (guiVisible and "shown" or "hidden"))
+	end
+end)
+
+-- Success message
+print("Admin Panel loaded! GUI is now visible by default. Press F2 to toggle or click the circle button in bottom-right corner. Created by Siva")
+print("Tab Colors: Red, Blue, Green, Purple, Orange, Yellow")
